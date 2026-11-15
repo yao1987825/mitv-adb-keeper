@@ -1,0 +1,17 @@
+# 编译中间产物
+app/build/
+app/gen/
+app/classes/
+app/dexout/
+app/res.zip
+app/*.apk
+app/*.aligned.apk
+app/*withdex.apk
+app/*.unsigned.apk
+
+# 工具链与本地文件
+tools/
+android_sdk/
+platform-tools/
+*.log
+.DS_Store
