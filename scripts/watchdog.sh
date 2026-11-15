@@ -57,6 +57,40 @@ if ! tv_alive; then
     exit 0
 fi
 
+
+# ------------------------------------------------------ 2.5 电视端助手健康体检
+# 电视端应用若被“停止”(安装更新后未拉起 / 被用户停止 / 系统回收)，
+# 它就不会再被系统派发任务，开机后无法自我恢复 ADB。
+# 这里主动检查并把它拉起来，让它重新注册持久化任务。
+ensure_tv_app_alive() {
+    local st jobs
+    st="$("$ADB" -s "$TV" shell "dumpsys package $PKG 2>/dev/null | grep -m1 'User 0:'" 2>/dev/null | tr -d '\r')"
+    if [ -z "$st" ]; then
+        log "   · 电视端助手未安装，跳过体检"
+        return 0
+    fi
+    if echo "$st" | grep -q "stopped=true"; then
+        log "   ⚠️ 电视端助手处于「停止状态」，正在拉起以恢复自愈能力"
+        "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+        sleep 3
+        st2="$("$ADB" -s "$TV" shell "dumpsys package $PKG 2>/dev/null | grep -m1 'User 0:'" 2>/dev/null | tr -d '\r')"
+        if echo "$st2" | grep -q "stopped=false"; then
+            log "   ✅ 已拉起，助手恢复正常"
+        else
+            log "   ❌ 拉起未成功：$st2"
+        fi
+        return 0
+    fi
+    # 任务是否还在
+    jobs="$("$ADB" -s "$TV" shell "dumpsys jobscheduler 2>/dev/null | grep -c $PKG" 2>/dev/null | tr -d '\r ')"
+    if [ "${jobs:-0}" = "0" ]; then
+        log "   ⚠️ 助手任务已丢失，重新拉起以注册"
+        "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+        sleep 2
+        log "   ✅ 已重新拉起"
+    fi
+}
+
 # ------------------------------------------------------ 1. ADB 是否可用
 if port_open; then
     [ "$LAST_STATE" = "FAIL" ] && log "✅ 已恢复正常：ADB 端口可用" || log "✅ 正常：ADB 端口可用"
@@ -80,6 +114,8 @@ else
             log "   捕获端口开放，执行强制开启"
             "$ADB" connect "$TV" >/dev/null 2>&1
             "$ADB" -s "$TV" shell "nohup sh -c 'service call TvService 4004 i32 0; sleep 2; service call TvService 4004 i32 1' >/data/local/tmp/adb_rescue.log 2>&1 &" >/dev/null 2>&1
+            # 同时把助手拉起来（若处于停止状态则清掉），恢复其长期自愈能力
+            "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
             sleep 8
             port_open && { log "   ✅ 修复成功"; RESCUED=1; }
             break

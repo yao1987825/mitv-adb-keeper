@@ -48,5 +48,10 @@
     "label": "Aerial",
     "versionName": "1.94",
     "path": "/data/app/app.orchard.tv-1/base.apk"
+  },
+  "com.kwai.tv.yst": {
+    "label": "云视听快TV",
+    "versionName": "14.7.10.2640",
+    "path": "/data/app/com.kwai.tv.yst-1/base.apk"
   }
 }

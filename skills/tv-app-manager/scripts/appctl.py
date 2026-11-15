@@ -312,7 +312,25 @@ def cmd_install(args):
             die("找不到文件：%s" % src)
         print("→ 正在安装：%s" % src)
         rc, out, err = adb("install", "-r", src, timeout=900)
-        print("✅ 安装成功：%s" % src if "Success" in out else "❌ 安装失败：%s %s" % (out, err))
+        if "Success" not in out:
+            print("❌ 安装失败：%s %s" % (out, err))
+            continue
+        print("✅ 安装成功：%s" % src)
+        # 关键：安装/更新后应用会进入「停止状态」，系统不再给它派发任何任务，
+        # 必须主动拉起一次，否则应用等于“死了”。
+        pkg = apk_package_of(src)
+        if pkg:
+            adb("shell", "am", "start", "-n", "%s/.MainActivity" % pkg, timeout=120)
+            print("   ↻ 已拉起 %s（避免停留在停止状态）" % pkg)
+
+
+def apk_package_of(apk_path):
+    """读取本地 APK 的包名"""
+    if not AAPT:
+        return None
+    rc, out, _ = sh([AAPT, "dump", "badging", apk_path], timeout=120)
+    m = re.search(r"package: name='([^']+)'", out)
+    return m.group(1) if m else None
 
 
 CMDS = {"list": cmd_list, "find": cmd_find, "info": cmd_info,

@@ -56,6 +56,8 @@ public class AdbJobService extends JobService {
                 }
                 // 链式续期：60 秒后再检查一次（系统会在重启后自动恢复该任务）
                 scheduleOnce(AdbJobService.this, CHAIN_DELAY_MS);
+                // 自愈保险：每次运行都确保周期任务存在（防止任务被系统清掉后无人恢复）
+                schedulePeriodic(AdbJobService.this);
                 jobFinished(params, false);
             }
         }).start();
