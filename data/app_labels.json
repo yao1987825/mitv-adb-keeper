@@ -1,0 +1,52 @@
+{
+  "com.xiaodianshi.tv.yst": {
+    "label": "云视听小电视",
+    "versionName": "1.8.9",
+    "path": "/data/app/com.xiaodianshi.tv.yst-1/base.apk"
+  },
+  "com.lutongnet.nldmxXiaomiChildren": {
+    "label": "儿童思维训练",
+    "versionName": "4.01.06",
+    "path": "/data/app/com.lutongnet.nldmxXiaomiChildren-1/base.apk"
+  },
+  "com.mitv.codec.update": {
+    "label": "videoplayer_lib_update",
+    "versionName": "7.1",
+    "path": "/data/app/com.mitv.codec.update-1/base.apk"
+  },
+  "com.mitv.shoplugin": {
+    "label": "tvshoplugin",
+    "versionName": "6.8.24",
+    "path": "/data/app/com.mitv.shoplugin-1/base.apk"
+  },
+  "com.xm.webcontent": {
+    "label": "MiWebView",
+    "versionName": "3.19",
+    "path": "/data/app/com.xm.webcontent-1/base.apk"
+  },
+  "com.cmgame.gamehalltv": {
+    "label": "咪咕游戏TV版",
+    "versionName": "6.9.6.0",
+    "path": "/data/app/com.cmgame.gamehalltv-1/base.apk"
+  },
+  "com.github.tvbox.osc.tk": {
+    "label": "TVBox",
+    "versionName": "1.0.20260227-1116",
+    "path": "/data/app/com.github.tvbox.osc.tk-1/base.apk"
+  },
+  "com.example.adbkeeper": {
+    "label": "ADB Keeper",
+    "versionName": "4.0",
+    "path": "/data/app/com.example.adbkeeper-2/base.apk"
+  },
+  "com.mitv.dvbplayer": {
+    "label": "com.mitv.dvbplayer",
+    "versionName": "3.11.5",
+    "path": "/data/app/com.mitv.dvbplayer-1/base.apk"
+  },
+  "app.orchard.tv": {
+    "label": "Aerial",
+    "versionName": "1.94",
+    "path": "/data/app/app.orchard.tv-1/base.apk"
+  }
+}

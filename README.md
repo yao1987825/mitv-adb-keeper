@@ -161,6 +161,38 @@ adb -s 192.168.6.168:5555 shell \
 
 ---
 
+## 附：技能包 tv-app-manager（一句话卸载应用）
+
+`skills/tv-app-manager/` 是一个独立的技能包，可导入 RikkaHub / opencode 使用。
+
+**能力**：用户说「卸载云视听快TV」→ 自动按中文名定位包名 → ADB 卸载 → 回报结果，
+全程不需要用户在电视上做任何操作。
+
+```bash
+cd skills/tv-app-manager
+python3 scripts/appctl.py list                  # 列出电视上所有应用（中文名）
+python3 scripts/appctl.py find 云视听            # 按名字搜索
+python3 scripts/appctl.py uninstall 云视听小电视  # 按中文名卸载
+python3 scripts/appctl.py info 咪咕游戏TV版       # 查看详情
+python3 scripts/appctl.py disable <应用名>        # 系统应用隐藏（可恢复）
+```
+
+打包成可导入的 zip：
+
+```bash
+python3 scripts/package_skill.py
+# → skills/tv-app-manager-rikkahub.zip
+# RikkaHub：设置 → 扩展管理 → 技能 → + → 从文件导入
+```
+
+**实现要点**：应用中文名藏在 APK 的 `resources.arsc` 里，直接整包拉取动辄几十 MB。
+脚本改为在电视端用 `busybox unzip -p` 只抽出 `resources.arsc` 与 `AndroidManifest.xml`
+（几十 KB），在电脑上拼成最小 APK 再用 `aapt dump badging` 取名，速度提升一个数量级；
+取到的名字缓存在 `data/app_labels.json`，之后查询几乎瞬时。
+
+
+---
+
 ## 目录结构
 
 ```
