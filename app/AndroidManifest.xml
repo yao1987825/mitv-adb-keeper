@@ -7,6 +7,8 @@
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 探测本机 5555 端口需要联网权限，否则 socket 连接会被系统拒绝 -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="@string/app_name"

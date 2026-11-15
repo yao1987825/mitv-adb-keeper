@@ -36,13 +36,17 @@ public class AdbHelper {
         } catch (Exception e) { }
     }
 
-    /** 探测本机 5555 端口，判断 ADB 网络调试是否真的可用 */
+    /**
+     * 探测本机 5555 端口，判断 ADB 网络调试是否真的可用。
+     * 注意：必须声明 android.permission.INTERNET，否则 socket 连接会被系统拒绝。
+     */
     public static boolean isAdbPortOpen() {
         Socket socket = new Socket();
         try {
-            socket.connect(new InetSocketAddress("127.0.0.1", 5555), 1500);
+            socket.connect(new InetSocketAddress("127.0.0.1", 5555), 2000);
             return true;
-        } catch (IOException e) {
+        } catch (Exception e) {
+            Log.w(TAG, "端口探测失败: " + e);
             return false;
         } finally {
             try { socket.close(); } catch (IOException e) { }
@@ -73,25 +77,38 @@ public class AdbHelper {
         }
     }
 
-    /** 先关再开，强制 adbd 重新启动并监听 5555 */
+    /** 先关再开，强制 adbd 重新启动并监听 5555（会短暂中断已有连接） */
     public static void toggleAdb() {
         callTvService(0);
         try { Thread.sleep(2000); } catch (InterruptedException e) { }
         callTvService(1);
     }
 
-    /** 检查并按需修复：端口未开则调用系统服务重新开启 */
+    /**
+     * 检查并按需修复 ADB：
+     *  - 端口已开：只做一次“断言式”开启调用（adb_enabled 已是 1 时为无副作用的空操作），
+     *    既能防止被系统关掉，也不会打断正在使用的连接。
+     *  - 端口未开：先尝试直接开启；仍不行再做 0→1 强制重启。
+     */
     public static boolean ensureAdb(Context context) {
         init(context);
         if (isAdbPortOpen()) {
-            log("ADB 端口正常，无需处理");
+            log("ADB 端口正常");
+            callTvService(1);   // 保持断言，防止被系统关闭
             return true;
         }
-        log("ADB 端口未开启，调用系统服务重新开启...");
+        log("ADB 端口未开启，尝试开启...");
         callTvService(1);
         try { Thread.sleep(3000); } catch (InterruptedException e) { }
+        if (isAdbPortOpen()) {
+            log("已重新开启");
+            return true;
+        }
+        log("仍未开启，执行强制重启(0→1)...");
+        toggleAdb();
+        try { Thread.sleep(3000); } catch (InterruptedException e) { }
         boolean ok = isAdbPortOpen();
-        log("处理后端口状态: " + (ok ? "OPEN" : "CLOSED"));
+        log("强制重启后端口状态: " + (ok ? "OPEN" : "CLOSED"));
         return ok;
     }
 }

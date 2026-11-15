@@ -67,6 +67,100 @@ UsbDeviceManager: Setting USB config to mtp,adb    ← ADB 恢复
 
 ---
 
+## 全自动守护（无需任何人工确认）
+
+整套方案由三层组成，**从开机到日常运行，全程不需要在电视或电脑上点任何“允许/确认/安装”**：
+
+| 层级 | 位置 | 职责 |
+|---|---|---|
+| ① 电视端助手 | 电视上的 `com.example.adbkeeper` | 开机后自动开启 ADB；每 60 秒自检一次 |
+| ② 电脑侧守护器 | 本仓库 `scripts/watchdog.sh` | 探测 ADB、异常时自动修复、**静默自动升级助手** |
+| ③ 定时任务 | crontab（每 5 分钟） | 让守护器在服务器上持续运行 |
+
+### 为什么以后不会再弹授权框
+电脑首次连接时，电视会把本机的 ADB 公钥写入 `/data/misc/adb/adb_keys`（电视端
+`dumpsys usb` 的 `User keys` 可查，已含 `yao@server`）。该授权**永久有效**，
+重启电视不会失效，也不会再弹“允许 USB 调试”。
+
+### 静默自动升级
+守护器会比较本地 `dist/adbkeeper.apk` 与电视上已安装 APK 的 **md5**：
+
+```
+2026-11-15 02:28:01 🔄 检测到新版本，后台静默安装...
+2026-11-15 02:28:10    ✅ 新版本已静默安装并启动
+```
+
+差异则用 `adb install -r` 覆盖安装并重新拉起，**全程无弹窗、无需点击**。
+所以以后更新助手只要替换掉 `dist/adbkeeper.apk`，下一次巡检会自动完成升级。
+
+### 状态查询与反馈
+
+```bash
+./scripts/status.sh
+```
+
+输出包含：当前状态、实时端口探测、近 7 天正常/告警/失败统计、最近一次失败与修复记录、最近 10 条日志。
+
+状态数据全部落在本项目 `data/` 目录：
+
+| 文件 | 内容 |
+|---|---|
+| `data/status.txt` | 当前状态快照 |
+| `data/watchdog.log` | 每次巡检的完整流水（追加写） |
+| `data/state.env` | 上次状态（用于识别“恢复”并单独记录） |
+
+### 手动巡检 / 修复
+
+```bash
+./scripts/watchdog.sh     # 立即执行一次巡检（发现异常会自动尝试修复）
+```
+
+异常时守护器会：先重连排除误判 → 再守候开机窗口（最长 120 秒）→ 捕获端口开启的瞬间，
+在电视本地执行 `service call TvService 4004 i32 0` + `i32 1` 强制重启 adbd →
+验证端口恢复。
+
+### 故障自愈演练
+
+```bash
+# 人为关闭电视 ADB，验证守护器能自动修回来
+adb -s 192.168.6.168:5555 shell \
+  "nohup sh -c 'service call TvService 4004 i32 0' >/data/local/tmp/break.log 2>&1 &"
+./scripts/watchdog.sh
+```
+
+---
+
+## 实现要点与踩坑记录
+
+### 1. `sys.*` 属性重启即清空
+小米电视用 `sys.set_adb_disabled` 记录“本次开机已处理过”，但它不是持久化属性，
+每次开机都会清空 → 于是每次都把 ADB 再关一次。这也是为什么单纯改
+`Settings.Global.adb_enabled` 或 `persist.sys.usb.netadb.config` 都无效。
+
+### 2. `adb install` 的应用收不到开机广播
+通过 `adb install` 安装的应用默认处于 **stopped 状态**，系统不会向其投递
+`BOOT_COMPLETED`。解决办法是用 `am start` 启动一次让应用脱离该状态，
+并改用 **JobScheduler 持久化任务**（`setPersisted(true)`）兜底——
+该机制由系统保存并恢复，不依赖应用自身的广播接收器。
+
+### 3. 端口探测必须声明 `INTERNET` 权限
+用 `Socket` 连 `127.0.0.1:5555` 探测时，若清单未声明
+`android.permission.INTERNET`，连接会被系统直接拒绝（抛 `SecurityException`）。
+早期版本因此**永远误判“ADB 未开启”**，日志失真、且会无谓打断正在使用的连接。
+加上权限后探测才准确，日志与行为都恢复正常。
+
+### 4. adbd 的监听地址
+`/proc/net/tcp` 显示 adbd 监听 `0.0.0.0:5555`（uid 2000），
+因此应用内用 `127.0.0.1` 探测是可行的。
+
+### 5. 有效的“开启”动作是 0→1
+只有 `adb_enabled` 发生 0→1 变化时，框架才会把 USB 配置切回 `mtp,adb`
+并重启 adbd。若其已是 1，调用开启命令是空操作——所以端口不可用时需要
+先 `0` 再 `1` 强制翻转。
+
+
+---
+
 ## 目录结构
 
 ```
@@ -82,7 +176,13 @@ mitv-adb-keeper/
 ├── scripts/
 │   ├── build.sh                 # 编译 APK
 │   ├── install.sh               # 安装到电视并配置
-│   └── uninstall.sh             # 从电视卸载
+│   ├── uninstall.sh             # 从电视卸载
+│   ├── watchdog.sh              # 电脑侧守护器：巡检 / 自愈 / 静默自动升级
+│   └── status.sh                # 状态摘要（反馈查询）
+├── data/                        # 守护器运行数据（状态 / 日志）
+│   ├── status.txt
+│   ├── watchdog.log
+│   └── state.env
 ├── dist/
 │   ├── adbkeeper.apk            # 已签名可直接安装的 APK
 │   └── adbkeeper.keystore       # 签名证书（个人开发用，见下方说明）
