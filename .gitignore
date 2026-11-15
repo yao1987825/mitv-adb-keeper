@@ -15,3 +15,13 @@ android_sdk/
 platform-tools/
 *.log
 .DS_Store
+
+# 守护器运行数据（状态可随时生成，流水日志体积大不入库）
+data/watchdog.log
+data/watchdog.lock
+data/state.env
+data/status.txt
+data/cron.log
+
+# apksigner v4 签名附属文件
+dist/*.idsig
