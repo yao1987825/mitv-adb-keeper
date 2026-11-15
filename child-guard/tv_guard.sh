@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ##############################################################
-#  电视儿童观看时间管理 (ADB版)  v1.3
+#  电视儿童观看时间管理 (ADB版)  v1.4
 #  适用：小米电视4 (192.168.6.168, Android 6.0.1)
 #
 #  功能：
@@ -50,9 +50,10 @@ BREAK_CHECK_INTERVAL=2       # 休息/禁用期间的检测间隔（秒），越
 SUSPEND_MODE=0
 TURN_OFF_SCREEN=0            # 1=到时直接熄屏，0=只回桌面
 
-# 可选：只允许在以下时间段观看（24小时制 HH:MM），留空则不限制
-ALLOW_START=""               # 例如 "18:00"
-ALLOW_END=""                 # 例如 "21:00"
+# 只允许在以下时间段观看（24小时制 HH:MM），留空则不限制
+# 本机设置：08:00 ~ 20:00 允许观看，20:00 ~ 次日 08:00 禁止（睡觉时间）
+ALLOW_START="08:00"          # 允许开始
+ALLOW_END="20:00"            # 允许结束（此时间之后进入禁止时段）
 
 # 需要管控的视频/娱乐 App 包名（已按这台电视实际安装的App整理）
 WATCH_PACKAGES=(
@@ -92,6 +93,21 @@ get_foreground_package() {
   echo "$pkg"
 }
 
+
+# 距离下一个允许时段开始的秒数（用于在禁止时段显示倒计时）
+seconds_until_allow() {
+  [ -z "$ALLOW_START" ] && { echo -1; return; }
+  local now_s target_s
+  now_s=$(date +%s)
+  target_s=$(date -d "today $ALLOW_START" +%s 2>/dev/null)
+  [ -z "$target_s" ] && { echo -1; return; }
+  if [ "$target_s" -le "$now_s" ]; then
+    target_s=$(date -d "tomorrow $ALLOW_START" +%s 2>/dev/null)
+  fi
+  [ -z "$target_s" ] && { echo -1; return; }
+  echo $((target_s - now_s))
+}
+
 # 判断是否受管控App
 is_watch_app() {
   local pkg="$1" p
@@ -120,8 +136,8 @@ REMINDER_PKG="com.example.reminder"
 # 显示/隐藏休息提醒页（全屏封面）
 # 参数1: 剩余休息秒数；-1 表示"今天不能再看了"
 show_reminder() {
-  local remain="${1:--1}"
-  "$ADB_BIN" -s "$ADB_TARGET" shell "am start -n $REMINDER_PKG/.MainActivity --ei remain_sec $remain" >/dev/null 2>&1
+  local remain="${1:--1}" night="${2:-0}"
+  "$ADB_BIN" -s "$ADB_TARGET" shell "am start -n $REMINDER_PKG/.MainActivity --ei remain_sec $remain --ei night_mode $night" >/dev/null 2>&1
 }
 hide_reminder() {
   "$ADB_BIN" -s "$ADB_TARGET" shell "am force-stop com.example.reminder" >/dev/null 2>&1
@@ -144,9 +160,10 @@ should_reshow_reminder() {
 
 # 到时执行：强停 + 弹出提醒页 + 可选熄屏
 block_action() {
+  local remain="${1:--1}" night="${2:-0}"
   force_stop_all
   sleep 1
-  show_reminder "${1:--1}"
+  show_reminder "$remain" "$night"
   "$ADB_BIN" -s "$ADB_TARGET" shell "cmd notification post -t '时间管理提醒' guard '小朋友休息一下，让眼睛放松放松吧~'" >/dev/null 2>&1 || true
   if [ "$TURN_OFF_SCREEN" = "1" ]; then
     "$ADB_BIN" -s "$ADB_TARGET" shell "input keyevent KEYCODE_SLEEP" >/dev/null 2>&1
@@ -247,17 +264,26 @@ main() {
       save_session
     fi
 
-    # 时间段限制（跨零点的时间段不支持，请用同一天内的起止时间）
+    # 时间段限制：只有 ALLOW_START~ALLOW_END 之间允许观看受控App
+    # 例：08:00~20:00 允许，20:00~次日08:00 禁止（睡觉时间）
+    OUT_OF_HOURS=0
     if [ -n "$ALLOW_START" ] && [ -n "$ALLOW_END" ]; then
       current_hm=$(date +%H:%M)
       if [[ "$current_hm" < "$ALLOW_START" || "$current_hm" > "$ALLOW_END" ]]; then
-        if is_watch_app "$fg"; then
-          log "当前不在允许观看时间段，停止"
-          block_action
-        fi
-        sleep "$CHECK_INTERVAL"
-        continue
+        OUT_OF_HOURS=1
       fi
+    fi
+
+    if [ "$OUT_OF_HOURS" = "1" ]; then
+      if is_watch_app "$fg"; then
+        log "不在允许观看时段($ALLOW_START-$ALLOW_END)，已停止"
+        block_action "$(seconds_until_allow)" 1
+      fi
+      # 禁止时段内休息计时照常推进，避免时间冻结
+      break_elapsed=$((break_elapsed + CHECK_INTERVAL))
+      save_session
+      sleep "$CHECK_INTERVAL"
+      continue
     fi
 
     is_watch=0

@@ -21,6 +21,8 @@ public class MainActivity extends Activity {
     /** 倒计时结束的真实时间戳，用墙钟计算，息屏/卡顿都不会走偏 */
     private long endTime = 0;
     private boolean closing = false;
+    /** 夜间禁止时段（20:00~次日08:00）模式 */
+    private boolean nightMode = false;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -62,12 +64,22 @@ public class MainActivity extends Activity {
         }
         // 注意：守护脚本用 --ei 传的是 int，必须用 getIntExtra 读取
         remainSec = intent.getIntExtra("remain_sec", -1);
+        nightMode = intent.getIntExtra("night_mode", 0) == 1;
         endTime = System.currentTimeMillis() + remainSec * 1000L;
         closing = false;
         render();
     }
 
     private void render() {
+        if (nightMode) {
+            // 夜间禁止时段：显示距离允许时段（早上8点）的倒计时
+            long left2 = remainSec < 0 ? 0 : (endTime - System.currentTimeMillis()) / 1000;
+            if (left2 < 0) left2 = 0;
+            labelView.setText("现在暂停观看");
+            countView.setText(String.format("%02d:%02d", left2 / 60, left2 % 60));
+            tipView.setText("晚上 8 点到早上 8 点是休息时间，早点睡哦");
+            return;
+        }
         if (remainSec < 0) {
             labelView.setText("今天不能再看啦");
             countView.setText("明天见");
