@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 休息提醒页：封面图 + 实时倒计时文字面板 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- 封面底图（右侧完整封面 + 左侧半透明面板） -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/app_name"
+        android:scaleType="fitCenter"
+        android:src="@drawable/reminder" />
+
+    <!-- 文字面板：位置与底图面板严格对齐(像素) -->
+    <LinearLayout
+        android:layout_width="1020px"
+        android:layout_height="810px"
+        android:layout_gravity="left|top"
+        android:layout_marginLeft="60px"
+        android:layout_marginTop="130px"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="0px"
+            android:text="小朋友，休息时间到啦！"
+            android:textColor="#0a4c7a"
+            android:textSize="96px"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="360px"
+            android:layout_height="16px"
+            android:layout_marginTop="36px"
+            android:background="#f5a623" />
+
+        <TextView
+            android:id="@+id/sub"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="48px"
+            android:padding="0px"
+            android:text="让眼睛放松一下"
+            android:textColor="#0a4c7a"
+            android:textSize="58px" />
+
+        <TextView
+            android:id="@+id/label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40px"
+            android:padding="0px"
+            android:text="还需休息"
+            android:textColor="#6b8caa"
+            android:textSize="44px" />
+
+        <TextView
+            android:id="@+id/countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8px"
+            android:padding="0px"
+            android:text="30:00"
+            android:textColor="#e8590c"
+            android:textSize="110px"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="44px"
+            android:padding="0px"
+            android:text="先去喝口水、看看远处吧"
+            android:textColor="#6b8caa"
+            android:textSize="44px" />
+    </LinearLayout>
+</FrameLayout>

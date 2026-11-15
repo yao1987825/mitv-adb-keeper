@@ -5,7 +5,13 @@
 #       ./connect_tv.sh shell    进入电视 shell
 #       ./connect_tv.sh reboot   重启电视
 
-ADB="$(dirname "$0")/platform-tools/adb"
+BASE="$(cd "$(dirname "$0")" && pwd)"
+ADB=""
+for d in "$BASE/platform-tools" "$BASE/../platform-tools" "$BASE/../../platform-tools" \
+         "$BASE/../../../platform-tools" "$HOME/rikkahub_file/platform-tools"; do
+  [ -x "$d/adb" ] && { ADB="$d/adb"; break; }
+done
+[ -z "$ADB" ] && ADB="$(command -v adb)"
 TV="192.168.6.168:5555"
 
 case "$1" in

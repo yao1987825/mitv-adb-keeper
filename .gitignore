@@ -25,3 +25,13 @@ data/cron.log
 
 # apksigner v4 签名附属文件
 dist/*.idsig
+
+# child-guard/reminder 构建中间产物（保留 reminder.apk 与签名证书）
+child-guard/reminder/classes/
+child-guard/reminder/dexout/
+child-guard/reminder/gen/
+child-guard/reminder/res.zip
+child-guard/reminder/*-unsigned.apk
+child-guard/reminder/*-withdex.apk
+child-guard/reminder/*-aligned.apk
+child-guard/reminder/*.idsig
