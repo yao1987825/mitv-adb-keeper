@@ -37,7 +37,15 @@ if ! pgrep -f '(^|/)tv_guard\.sh' > /dev/null; then
   echo "[$(date '+%F %T')] 看门狗：守护进程不存在，已自动拉起" >> "$LOG"
 fi
 
-# 2) 提醒页APK自愈（电视管家/清理工具可能把它删掉）
+# 2) Kiosk 模式自愈（电视重启/进程被杀后自动拉起）
+if [ -f "$DIR/../kiosk/start_kiosk.sh" ]; then
+  if ! pgrep -f '(^|/)kiosk\.sh' > /dev/null; then
+    setsid "$DIR/../kiosk/start_kiosk.sh" >/dev/null 2>&1 < /dev/null &
+    echo "[$(date '+%F %T')] 看门狗：Kiosk 进程不存在，已自动拉起" >> "$LOG"
+  fi
+fi
+
+# 3) 提醒页APK自愈（电视管家/清理工具可能把它删掉）
 if adb_do connect "$TV" >/dev/null 2>&1; then
   if ! adb_do -s "$TV" shell pm path com.example.reminder 2>/dev/null | grep -q "reminder"; then
     if adb_do -s "$TV" install -r reminder/reminder.apk >/dev/null 2>&1; then
@@ -45,7 +53,7 @@ if adb_do connect "$TV" >/dev/null 2>&1; then
     fi
   fi
 
-  # 3) 自动卸载禁止的App
+  # 4) 自动卸载禁止的App
   uninstall_banned_apps "$ADB" "$TV" logger_watchdog
 fi
 exit 0
