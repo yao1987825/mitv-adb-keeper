@@ -82,6 +82,14 @@ ensure_adb() {
 }
 
 # 获取当前前台App包名
+# 当前前台完整组件（包名/Activity），用于识别模式切换等特定界面
+get_foreground_component() {
+  local line
+  line=$(adb_do -s "$ADB_TARGET" shell "dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity'" 2>/dev/null | head -n1)
+  [ -z "$line" ] && line=$(adb_do -s "$ADB_TARGET" shell "dumpsys window windows 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp'" 2>/dev/null | head -n1)
+  echo "$line" | grep -oE '[A-Za-z0-9_.]+/[A-Za-z0-9_.]+' | head -n1
+}
+
 get_foreground_package() {
   local line pkg
   line=$(adb_do -s "$ADB_TARGET" shell "dumpsys window windows 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp'" 2>/dev/null | head -n1)
@@ -278,6 +286,16 @@ main() {
     # 孩子反复下载被禁APP -> ADB 一连通就立刻卸载
     uninstall_banned_apps "$ADB_BIN" "$ADB_TARGET" log
     fg=$(get_foreground_package)
+
+    # 桌面模式切换防护：孩子一旦进入“模式选择”界面（试图退出长辈/儿童模式），
+    # 立即按返回键踢回桌面，防止切回标准模式看到短视频/短剧
+    fg_comp=$(get_foreground_component)
+    if echo "$fg_comp" | grep -q 'com.mitv.tvhome/.*ModeSwitch'; then
+      log "⚠️ 检测到尝试切换桌面模式（$fg_comp），已拦截踢回"
+      adb_do -s "$ADB_TARGET" shell "input keyevent KEYCODE_BACK" >/dev/null 2>&1
+      sleep 2
+      continue
+    fi
 
     # 跨天则重置
     current_day=$(today)

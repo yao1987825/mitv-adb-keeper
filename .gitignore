@@ -35,3 +35,6 @@ child-guard/reminder/*-unsigned.apk
 child-guard/reminder/*-withdex.apk
 child-guard/reminder/*-aligned.apk
 child-guard/reminder/*.idsig
+
+# 受控App的APK备份（体积大，仅本机使用，不入库）
+child-guard/apps/*.apk
