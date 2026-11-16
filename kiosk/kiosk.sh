@@ -18,6 +18,7 @@ CONF="$(dirname "$0")/kiosk.conf"
 [ -f "$CONF" ] || { echo "缺少配置: $CONF"; exit 1; }
 # shellcheck disable=SC1090
 . "$CONF"
+LAUNCHER_PKG="${LAUNCHER_PKG:-com.mitv.tvhome}"
 
 TV_IP="${TV_IP:-192.168.6.168}"
 TV_PORT="${TV_PORT:-5555}"
@@ -43,14 +44,16 @@ adb_do() { timeout "$ADB_TIMEOUT" "$ADB_BIN" "$@"; }
 log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
 
 ensure_adb() {
-  adb_do devices 2>/dev/null | grep -qw "$TV_TARGET" || adb_do connect "$TV_TARGET" >/dev/null 2>&1
+  adb_do devices 2>/dev/null | grep -qw "$ADB_TARGET" || adb_do connect "$ADB_TARGET" >/dev/null 2>&1
 }
 
 # 当前前台包名
+# 注意：这台电视上 mCurrentFocus 经常是 null（屏幕空闲/切换时），
+# 必须优先用 mResumedActivity，否则会误判成“未知”而反复拉 TVBox（v1.1 修正）
 get_foreground_package() {
   local line pkg
-  line=$(adb_do -s "$ADB_TARGET" shell "dumpsys window windows 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp'" 2>/dev/null | head -n1)
-  [ -z "$line" ] && line=$(adb_do -s "$ADB_TARGET" shell "dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity'" 2>/dev/null | head -n1)
+  line=$(adb_do -s "$ADB_TARGET" shell "dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity'" 2>/dev/null | head -n1)
+  [ -z "$line" ] && line=$(adb_do -s "$ADB_TARGET" shell "dumpsys window windows 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp'" 2>/dev/null | head -n1)
   pkg=$(echo "$line" | grep -oE '[A-Za-z0-9_.]+/[A-Za-z0-9_.]+' | head -n1 | cut -d'/' -f1)
   echo "$pkg"
 }
@@ -89,12 +92,23 @@ launch_kiosk() {
     adb_do -s "$ADB_TARGET" shell "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $KIOSK_PACKAGE" >/dev/null 2>&1
     return
   fi
-  adb_do -s "$ADB_TARGET" shell "am start -n $KIOSK_PACKAGE/$act" >/dev/null 2>&1
+  # act 可能已经是「包名/Activity」，也可能是纯「Activity」；
+  # 不能直接拼成 $KIOSK_PACKAGE/$act，否则会变成 包名/包名/Activity（v1.1 修正）
+  case "$act" in
+    *"$KIOSK_PACKAGE"/*) : ;;
+    *) act="$KIOSK_PACKAGE/$act" ;;
+  esac
+  adb_do -s "$ADB_TARGET" shell "am start -n $act" >/dev/null 2>&1
 }
 
 block_and_return() {
   local fg="$1"
-  [ -n "$fg" ] && adb_do -s "$ADB_TARGET" shell "am force-stop $fg" >/dev/null 2>&1
+  # 桌面(home)不要强停：强停会让系统立即重启它，反而和 Kiosk 反复争夺前台（v1.2 修正）。
+  # 其它应用（孩子想打开/已打开的）才强停。
+  case "$fg" in
+    ""|"$LAUNCHER_PKG") : ;;
+    *) adb_do -s "$ADB_TARGET" shell "am force-stop $fg" >/dev/null 2>&1 ;;
+  esac
   sleep 1
   launch_kiosk
 }
