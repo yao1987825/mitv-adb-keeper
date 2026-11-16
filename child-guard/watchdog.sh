@@ -27,6 +27,47 @@ ADB="$(resolve_adb)"
 ADB_TIMEOUT="${ADB_TIMEOUT:-10}"
 adb_do() { timeout "$ADB_TIMEOUT" "$ADB" "$@"; }
 
+# ============================================================================
+#  安装白名单：不在允许清单里的 App 一旦被安装就自动卸载
+#  受控 App 被孩子卸载后，从备份 APK 自动装回
+# ============================================================================
+ALLOWED_FILE="$DIR/allowed_apps.txt"
+BACKUP_DIR="$DIR/apps"
+
+allowed_list() {
+  [ -f "$ALLOWED_FILE" ] || return 0
+  grep -vE '^[[:space:]]*(#|$)' "$ALLOWED_FILE" | sed 's/#.*//' | tr -d ' \t' | grep -v '^$'
+}
+
+# 1) 清理不在白名单里的新装 App
+enforce_install_whitelist() {
+  local pkg allowed
+  allowed="$(allowed_list | tr '\n' ' ')"
+  for pkg in $(adb_do -s "$TV" shell "pm list packages -3" 2>/dev/null | tr -d '\r' | sed 's/package://'); do
+    [ -z "$pkg" ] && continue
+    case " $allowed " in *" $pkg "*) continue;; esac
+    if adb_do -s "$TV" uninstall "$pkg" >/dev/null 2>&1; then
+      logger_watchdog "🚫 检测到白名单外的App「$pkg」已被安装，已自动卸载"
+    fi
+  done
+}
+
+# 2) 受控 App 消失 -> 用备份 APK 装回
+restore_watched_apps() {
+  local pkg apk
+  for pkg in "$@"; do
+    apk="$BACKUP_DIR/$pkg.apk"
+    [ -f "$apk" ] || continue
+    if ! adb_do -s "$TV" shell "pm path $pkg" 2>/dev/null | grep -q "$pkg"; then
+      if adb_do -s "$TV" install -r "$apk" >/dev/null 2>&1; then
+        logger_watchdog "♻️ 受控App「$pkg」被卸载，已从备份自动装回"
+      else
+        logger_watchdog "⚠️ 受控App「$pkg」自动装回失败"
+      fi
+    fi
+  done
+}
+
 logger_watchdog() {
   echo "[$(date '+%F %T')] $1" >> "$LOG"
 }
@@ -47,5 +88,11 @@ if adb_do connect "$TV" >/dev/null 2>&1; then
 
   # 3) 自动卸载禁止的App
   uninstall_banned_apps "$ADB" "$TV" logger_watchdog
+
+  # 4) 安装白名单：新装的App一律卸载
+  enforce_install_whitelist
+
+  # 5) 受控App被孩子卸载后自动装回
+  restore_watched_apps $(grep -oE 'com\.[A-Za-z0-9_.]+' "$DIR/schedule.conf" 2>/dev/null | sort -u)
 fi
 exit 0

@@ -1,0 +1,20 @@
+# 允许存在于电视上的 App（不在此列表的新装 App 会被自动卸载）
+# 格式：包名  # 说明
+# ---- 小孩可用的娱乐/点播类（受时间管控）----
+com.github.tvbox.osc.jun            # TVBox（q215613905版，用户指定安装）
+com.github.tvbox.osc.tk          # TVBox 影视仓
+com.ktcp.video                   # 云视听极光
+com.cmgame.gamehalltv            # 咪咕游戏TV版
+# ---- 教育类（不受时间管控）----
+com.lutongnet.nldmxXiaomiChildren # 儿童思维训练
+# ---- 工具/系统（必需）----
+com.example.adbkeeper             # ADB 自动开启助手（本项目）
+com.example.reminder              # 休息提醒页（本项目）
+com.xiaomi.tv.gallery             # 相册/屏保
+com.mitv.screensaver              # 屏保
+com.miui.systemAdSolution         # 系统广告
+com.xiaomi.mitv.shop              # 商店
+com.mitv.shoplugin         # 商店插件
+com.xm.webcontent                 # MiWebView
+com.mitv.dvbplayer                # 数字电视播放器
+com.mitv.codec.update             # 播放器组件

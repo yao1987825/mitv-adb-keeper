@@ -23,6 +23,8 @@ public class MainActivity extends Activity {
     private boolean closing = false;
     /** 夜间禁止时段（20:00~次日08:00）模式 */
     private boolean nightMode = false;
+    /** 当前禁止时段的名称（早饭/午饭/写作业/睡觉…），守护脚本传入 */
+    private String periodName = "";
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -65,6 +67,8 @@ public class MainActivity extends Activity {
         // 注意：守护脚本用 --ei 传的是 int，必须用 getIntExtra 读取
         remainSec = intent.getIntExtra("remain_sec", -1);
         nightMode = intent.getIntExtra("night_mode", 0) == 1;
+        periodName = intent.getStringExtra("period");
+        if (periodName == null) periodName = "";
         endTime = System.currentTimeMillis() + remainSec * 1000L;
         closing = false;
         render();
@@ -85,6 +89,11 @@ public class MainActivity extends Activity {
             countView.setText("明天见");
             tipView.setText("先去喝口水、看看远处吧");
             return;
+        }
+        // 带有时段名时（如「写作业」），把时段名显示出来
+        if (!periodName.isEmpty()) {
+            labelView.setText(periodName + "时间");
+            tipView.setText("先休息一下下哦");
         }
         if (remainSec == 0) {
             if (!closing) {

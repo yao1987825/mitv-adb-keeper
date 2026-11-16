@@ -43,9 +43,11 @@ TV_IP="192.168.6.168"        # 小米电视IP
 ADB_PORT="5555"
 ADB_TARGET="$TV_IP:$ADB_PORT"
 
-WATCH_LIMIT_MIN=30           # 单次最长连续观看分钟
-BREAK_MIN=30                 # 到点后强制休息分钟
-DAILY_LIMIT_MIN=120          # 每天累计观看上限分钟，0 表示不限制
+# 观看规则与时段表统一放在 schedule.conf（家长直接改那个文件即可）
+SCHED_CONF="$(dirname "$0")/schedule.conf"
+[ -f "$SCHED_CONF" ] || { echo "缺少配置: $SCHED_CONF"; exit 1; }
+# shellcheck disable=SC1091
+. "$SCHED_CONF"
 # 说明：当前为严格累计模式，切App/关机都不重置计时；
 #       完成一次休息或跨天后才归零。
 CHECK_INTERVAL=5             # 正常检测间隔（秒）
@@ -55,18 +57,6 @@ BREAK_CHECK_INTERVAL=2       # 休息/禁用期间的检测间隔（秒），越
 SUSPEND_MODE=0
 TURN_OFF_SCREEN=0            # 1=到时直接熄屏，0=只回桌面
 
-# 只允许在以下时间段观看（24小时制 HH:MM），留空则不限制
-# 本机设置：08:00 ~ 20:00 允许观看，20:00 ~ 次日 08:00 禁止（睡觉时间）
-ALLOW_START="08:00"          # 允许开始
-ALLOW_END="20:00"            # 允许结束（此时间之后进入禁止时段）
-
-# 需要管控的视频/娱乐 App 包名（已按这台电视实际安装的App整理）
-WATCH_PACKAGES=(
-  # 用户指定管控的三个App
-  "com.kwai.tv.yst"                # 快手TV
-  "com.duokan.videodaily"          # 云视听
-  "com.cmgame.gamehalltv"          # 游戏大厅
-)
 # ====================================================
 
 STATE_DIR="${HOME}/.tv_guard"
@@ -76,8 +66,10 @@ LOG_FILE="$STATE_DIR/tv_guard.log"
 mkdir -p "$STATE_DIR"
 
 # ---------------- 工具函数 ----------------
-log() { echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"; }
-today() { date +%F; }
+# 时间统一用中国时区（Asia/Shanghai），与电视/家庭作息一致
+TZ_CHINA="Asia/Shanghai"
+log() { echo "[$(TZ=$TZ_CHINA date '+%F %T')] $*" | tee -a "$LOG_FILE"; }
+today() { TZ=$TZ_CHINA date +%F; }
 now_sec() { date +%s; }
 
 # 确保ADB已连接
@@ -99,18 +91,44 @@ get_foreground_package() {
 }
 
 
-# 距离下一个允许时段开始的秒数（用于在禁止时段显示倒计时）
-seconds_until_allow() {
-  [ -z "$ALLOW_START" ] && { echo -1; return; }
-  local now_s target_s
-  now_s=$(date +%s)
-  target_s=$(date -d "today $ALLOW_START" +%s 2>/dev/null)
-  [ -z "$target_s" ] && { echo -1; return; }
-  if [ "$target_s" -le "$now_s" ]; then
-    target_s=$(date -d "tomorrow $ALLOW_START" +%s 2>/dev/null)
-  fi
-  [ -z "$target_s" ] && { echo -1; return; }
-  echo $((target_s - now_s))
+# ============================================================================
+#  时段表判定
+#  current_block_period → 命中禁止时段时输出 "名称|剩余秒数"，未命中返回 1
+# ============================================================================
+current_block_period() {
+  local cur p s e name sv sm ev emin smin hit remain
+  cur=$(( 10#$(TZ=$TZ_CHINA date +%H) * 60 + 10#$(TZ=$TZ_CHINA date +%M) ))
+  for p in "${BLOCK_PERIODS[@]}"; do
+    read -r s e name <<< "$p"
+    [ -z "$s" ] && continue
+    sv=${s%%:*}; sm=${s##*:}; ev=${e%%:*}; em=${e##*:}
+    smin=$(( 10#$sv * 60 + 10#$sm ))
+    emin=$(( 10#$ev * 60 + 10#$em ))
+    hit=0
+    if [ "$smin" -lt "$emin" ]; then
+      if [ "$cur" -ge "$smin" ] && [ "$cur" -lt "$emin" ]; then hit=1; fi
+    else
+      if [ "$cur" -ge "$smin" ] || [ "$cur" -lt "$emin" ]; then hit=1; fi
+    fi
+    if [ "$hit" = "1" ]; then
+      if [ "$smin" -lt "$emin" ]; then
+        remain=$(( (emin - cur) * 60 ))
+      elif [ "$cur" -ge "$smin" ]; then
+        remain=$(( (1440 - cur + emin) * 60 ))
+      else
+        remain=$(( (emin - cur) * 60 ))
+      fi
+      echo "$name|$remain"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 睡觉时段（名称含"睡"）是否需要熄屏
+is_sleep_period() {
+  case "$1" in *睡*) return 0;; esac
+  return 1
 }
 
 # 引入被禁APP统一处理（发现即卸载）
@@ -145,8 +163,8 @@ REMINDER_PKG="com.example.reminder"
 # 显示/隐藏休息提醒页（全屏封面）
 # 参数1: 剩余休息秒数；-1 表示"今天不能再看了"
 show_reminder() {
-  local remain="${1:--1}" night="${2:-0}"
-  adb_do -s "$ADB_TARGET" shell "am start -n $REMINDER_PKG/.MainActivity --ei remain_sec $remain --ei night_mode $night" >/dev/null 2>&1
+  local remain="${1:--1}" night="${2:-0}" period="${3:-}"
+  adb_do -s "$ADB_TARGET" shell "am start -n $REMINDER_PKG/.MainActivity --ei remain_sec $remain --ei night_mode $night --es period '$period'" >/dev/null 2>&1
 }
 hide_reminder() {
   adb_do -s "$ADB_TARGET" shell "am force-stop com.example.reminder" >/dev/null 2>&1
@@ -275,26 +293,35 @@ main() {
       save_session
     fi
 
-    # 时间段限制：只有 ALLOW_START~ALLOW_END 之间允许观看受控App
-    # 例：08:00~20:00 允许，20:00~次日08:00 禁止（睡觉时间）
-    OUT_OF_HOURS=0
-    if [ -n "$ALLOW_START" ] && [ -n "$ALLOW_END" ]; then
-      current_hm=$(date +%H:%M)
-      if [[ "$current_hm" < "$ALLOW_START" || "$current_hm" > "$ALLOW_END" ]]; then
-        OUT_OF_HOURS=1
+    # 时段表：命中禁止时段就停止受控App并提醒（支持多个时段、跨零点）
+    BLOCK_INFO="$(current_block_period)" || BLOCK_INFO=""
+    if [ -n "$BLOCK_INFO" ]; then
+      period_name="${BLOCK_INFO%%|*}"
+      period_left="${BLOCK_INFO##*|}"
+      # 睡觉时段：进入时熄屏，离开时唤醒
+      if [ "$SCREEN_OFF_ON_SLEEP" = "1" ] && is_sleep_period "$period_name"; then
+        if [ "$(cat "$STATE_DIR/screen_off" 2>/dev/null)" != "1" ]; then
+          log "进入「$period_name」时段，熄屏"
+          adb_do -s "$ADB_TARGET" shell "input keyevent KEYCODE_SLEEP" >/dev/null 2>&1
+          echo 1 > "$STATE_DIR/screen_off"
+        fi
       fi
-    fi
-
-    if [ "$OUT_OF_HOURS" = "1" ]; then
       if is_watch_app "$fg"; then
-        log "不在允许观看时段($ALLOW_START-$ALLOW_END)，已停止"
-        block_action "$(seconds_until_allow)" 1
+        log "处于「$period_name」时段，已停止观看"
+        force_stop_all
+        sleep 1
+        show_reminder "$period_left" 2 "$period_name"
       fi
-      # 禁止时段内休息计时照常推进，避免时间冻结
       break_elapsed=$((break_elapsed + CHECK_INTERVAL))
       save_session
       sleep "$CHECK_INTERVAL"
       continue
+    fi
+    # 离开禁止时段 → 唤醒屏幕
+    if [ "$SCREEN_OFF_ON_SLEEP" = "1" ] && [ "$(cat "$STATE_DIR/screen_off" 2>/dev/null)" = "1" ]; then
+      log "离开禁止时段，唤醒屏幕"
+      adb_do -s "$ADB_TARGET" shell "input keyevent KEYCODE_WAKEUP" >/dev/null 2>&1
+      rm -f "$STATE_DIR/screen_off"
     fi
 
     is_watch=0

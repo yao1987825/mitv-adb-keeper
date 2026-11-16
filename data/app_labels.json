@@ -53,5 +53,15 @@
     "label": "云视听快TV",
     "versionName": "14.7.10.2640",
     "path": "/data/app/com.kwai.tv.yst-1/base.apk"
+  },
+  "com.ktcp.video": {
+    "label": "云视听极光",
+    "versionName": "20.4.0.2013",
+    "path": "/data/app/com.ktcp.video-1/base.apk"
+  },
+  "com.example.reminder": {
+    "label": "休息提醒",
+    "versionName": "1.0",
+    "path": "/data/app/com.example.reminder-1/base.apk"
   }
 }
