@@ -310,8 +310,9 @@ main() {
     uninstall_banned_apps "$ADB_BIN" "$ADB_TARGET" log
     fg=$(get_foreground_package)
 
-    # 开机后自动恢复长辈模式（节流：10分钟一次）
-    if [ "$(cat "$STATE_DIR/last_elder_check" 2>/dev/null || echo 0)" -lt $(( $(now_sec) - 600 )) ]; then
+    # 长辈模式自动恢复：只在开机后不久尝试一次，之后靠 DNS 黑洞防短视频/短剧。
+    # （节流：24小时一次，避免频繁抢屏干扰家人正常使用）
+    if [ "$(cat "$STATE_DIR/last_elder_check" 2>/dev/null || echo 0)" -lt $(( $(now_sec) - 86400 )) ]; then
       ensure_elder_mode
       echo "$(now_sec)" > "$STATE_DIR/last_elder_check"
     fi
