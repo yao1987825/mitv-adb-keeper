@@ -1,7 +1,6 @@
 package com.example.adbkeeper;
 
 import android.content.Context;
-import android.content.Intent;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.util.Log;
@@ -23,60 +22,6 @@ public class AdbHelper {
 
     public static void init(Context ctx) {
         appContext = ctx.getApplicationContext();
-    }
-
-    /** 开机要自动拉起的应用（Kiosk 模式） */
-    private static final String[] KIOSK_APPS = {
-        "com.github.tvbox.osc.tk"    // TVBox
-    };
-    private static final String BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id";
-    private static final String LAST_BOOT_ID = "last_boot_id";
-
-    /** 读取本次启动的唯一标识 */
-    private static String currentBootId() {
-        try {
-            java.io.File f = new java.io.File(BOOT_ID_FILE);
-            if (!f.exists()) return "";
-            java.io.FileInputStream in = new java.io.FileInputStream(f);
-            byte[] buf = new byte[64];
-            int n = in.read(buf);
-            in.close();
-            return n > 0 ? new String(buf, 0, n).trim() : "";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    /**
-     * 开机后自动拉起 TVBox（Kiosk 模式）。
-     * 每台电视只会执行一次（用 boot_id 区分不同次开机）。
-     * 这样电视一开机就能直接进入 TVBox，不必等电脑端 ADB 恢复。
-     */
-    public static void maybeLaunchKioskApp(Context context) {
-        try {
-            String bootId = currentBootId();
-            if (bootId.isEmpty()) return;
-            android.content.SharedPreferences sp =
-                    context.getSharedPreferences("adb_keeper", Context.MODE_PRIVATE);
-            if (bootId.equals(sp.getString(LAST_BOOT_ID, ""))) return;   // 本次开机已拉起过
-            sp.edit().putString(LAST_BOOT_ID, bootId).commit();
-
-            for (String pkg : KIOSK_APPS) {
-                Intent i = new Intent(Intent.ACTION_MAIN);
-                i.addCategory(Intent.CATEGORY_LAUNCHER);
-                i.setPackage(pkg);
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                try {
-                    context.startActivity(i);
-                    log("开机自动拉起 " + pkg);
-                    return;
-                } catch (Exception e) {
-                    log("拉起 " + pkg + " 失败: " + e);
-                }
-            }
-        } catch (Exception e) {
-            log("开机拉起异常: " + e);
-        }
     }
 
     /** 写日志到应用目录，方便用 run-as 读取 */
@@ -147,7 +92,6 @@ public class AdbHelper {
      */
     public static boolean ensureAdb(Context context) {
         init(context);
-        maybeLaunchKioskApp(context);
         if (isAdbPortOpen()) {
             log("ADB 端口正常");
             callTvService(1);   // 保持断言，防止被系统关闭

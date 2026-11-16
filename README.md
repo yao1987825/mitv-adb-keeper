@@ -269,23 +269,6 @@ cat ~/.tv_guard/daily_usage.txt     # 今日已看时长
 
 ---
 
-## 模块三：kiosk —— 开机自动进 TVBox，其余应用屏蔽
-
-`kiosk/` 模块：电视开机自动进入 **TVBox**，其余应用每 2 秒检测一次，
-不在白名单就强制关闭并拉回 TVBox（按主页键也回不去）。
-
-```bash
-cd kiosk
-./start_kiosk.sh     # 启动
-./stop_kiosk.sh      # 停止（家长退出用）
-```
-
-- 开机拉起 TVBox 是**双保险**：电视端助手开机直接拉起（不依赖电脑）+ 电脑端守护补拉
-- 与儿童守护联动：休息时段不抢屏，交给提醒页
-- 进程挂了由儿童守护看门狗（每分钟）自动拉起
-- 详细说明见 [`kiosk/README.md`](kiosk/README.md)
-
-
 ---
 
 ## 目录结构

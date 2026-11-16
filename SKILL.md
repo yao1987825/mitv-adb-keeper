@@ -13,7 +13,6 @@ description: 小米电视助手。当用户要「控制小米电视」「卸载�
 |---|---|---|
 | **应用管理** | `skills/tv-app-manager/` | 按中文名卸载/查询/停用/清数据电视应用 |
 | **儿童守护** | `child-guard/` | 观看时长限制、休息强制中断、夜间禁用、自动卸载被禁App |
-| **Kiosk 模式** | `kiosk/` | 开机自动进入 TVBox，其余应用一律屏蔽 |
 | **ADB 自动开启** | `app/` + `scripts/watchdog.sh` | 电视开机后 ADB 自动可用，无需手动开启 |
 
 ---
@@ -62,17 +61,6 @@ cat ~/.tv_guard/daily_usage.txt      # 今日已看时长
 - 受控 APP 在 `tv_guard.sh` 的 `WATCH_PACKAGES`
 - **被禁APP清单**在仓库根 `banned_apps.txt`：一旦在电视上被发现即自动卸载
   （当前含快手/云视听快TV，防止孩子反复下载）
-
-## 3. Kiosk 模式（开机进 TVBox，屏蔽其它应用）
-
-```bash
-cd /home/yao/rikkahub_file/mitv-adb-keeper/kiosk
-./start_kiosk.sh     # 启动
-./stop_kiosk.sh      # 停止（家长退出用）
-```
-
-配置见 `kiosk/kiosk.conf`：目标 App、白名单、检测间隔、是否服从休息时段。
-详见 [kiosk/README.md](kiosk/README.md)。
 
 ## 4. ADB 自动开启助手（电视端）
 
