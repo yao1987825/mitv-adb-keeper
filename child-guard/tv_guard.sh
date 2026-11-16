@@ -98,27 +98,33 @@ get_foreground_package() {
   echo "$pkg"
 }
 
-# 自动恢复「长辈模式」：桌面若处于标准模式（含频道容器/推荐流），
-# 自动打开模式切换并点“长辈模式”，再返回。
-ELDER_MODE_TAB_X=1168   # 1080p 下“长辈模式”标签中心X
-ELDER_MODE_TAB_Y=872    # 1080p 下“长辈模式”标签中心Y
+# 自动恢复「长辈模式」：桌面处于标准模式（com.mitv.tvhome/.MainActivity）时，
+# 自动打开模式切换界面：点“长辈模式”卡片 + 点底部“切换”按钮。
+ELDER_CARD_X=1168    # 1080p 下“长辈模式”卡片中心X
+ELDER_CARD_Y=233     # 1080p 下卡片中心Y
+ELDER_SWITCH_X=960   # 底部“切换”按钮中心X
+ELDER_SWITCH_Y=676   # 底部“切换”按钮中心Y
+ELDER_MODE_ACTIVITY="com.mitv.tvhome/.MainActivityUserMode"   # 长辈模式主界面
 ensure_elder_mode() {
   local comp
   comp=$(get_foreground_component)
   case "$comp" in com.mitv.tvhome/*) : ;; *) return ;; esac
-  if adb_do -s "$ADB_TARGET" shell "dumpsys activity top 2>/dev/null | grep -q ChannelContainerNew" 2>/dev/null; then
-    # 设置互斥标志：模式切换防护在此期间不拦截（避免自己打自己）
-    echo 1 > "$STATE_DIR/elder_switching"
-    log "🛡️ 检测到桌面为标准模式（含推荐流），自动切回长辈模式"
-    adb_do -s "$ADB_TARGET" shell "am start -n com.mitv.tvhome/.ModeSwitchActivity" >/dev/null 2>&1
-    sleep 2
-    adb_do -s "$ADB_TARGET" shell "input tap $ELDER_MODE_TAB_X $ELDER_MODE_TAB_Y" >/dev/null 2>&1
-    sleep 2
-    adb_do -s "$ADB_TARGET" shell "input keyevent KEYCODE_BACK" >/dev/null 2>&1
-    sleep 1
-    adb_do -s "$ADB_TARGET" shell "settings put system user_mode 2" >/dev/null 2>&1
-    rm -f "$STATE_DIR/elder_switching"
-  fi
+  # 已在长辈模式则无需处理
+  case "$comp" in *MainActivityUserMode) return ;; esac
+  # 桌面处于标准模式（MainActivity）
+  # 设置互斥标志：模式切换防护在此期间不拦截（避免自己打自己）
+  echo 1 > "$STATE_DIR/elder_switching"
+  log "🛡️ 检测到桌面为标准模式，自动切回长辈模式"
+  adb_do -s "$ADB_TARGET" shell "am start -n com.mitv.tvhome/.ModeSwitchActivity" >/dev/null 2>&1
+  sleep 3
+  adb_do -s "$ADB_TARGET" shell "input tap $ELDER_CARD_X $ELDER_CARD_Y" >/dev/null 2>&1
+  sleep 2
+  adb_do -s "$ADB_TARGET" shell "input tap $ELDER_SWITCH_X $ELDER_SWITCH_Y" >/dev/null 2>&1
+  sleep 4
+  adb_do -s "$ADB_TARGET" shell "input keyevent KEYCODE_HOME" >/dev/null 2>&1
+  sleep 1
+  adb_do -s "$ADB_TARGET" shell "settings put system user_mode 2" >/dev/null 2>&1
+  rm -f "$STATE_DIR/elder_switching"
 }
 
 
@@ -306,6 +312,17 @@ main() {
 
   while true; do
     ensure_adb
+    # 电视重新上线（重启/开机）→ 重置长辈模式自动恢复计时
+    if adb_do -s "$ADB_TARGET" get-state >/dev/null 2>&1; then
+      if [ "$(cat "$STATE_DIR/tv_was_down" 2>/dev/null || echo 0)" = "1" ]; then
+        log "电视重新上线，重置长辈模式自动恢复计时"
+        rm -f "$STATE_DIR/last_elder_check"
+      fi
+      echo 0 > "$STATE_DIR/tv_was_down"
+    else
+      echo 1 > "$STATE_DIR/tv_was_down"
+    fi
+
     # 孩子反复下载被禁APP -> ADB 一连通就立刻卸载
     uninstall_banned_apps "$ADB_BIN" "$ADB_TARGET" log
     fg=$(get_foreground_package)
