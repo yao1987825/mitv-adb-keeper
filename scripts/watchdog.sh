@@ -22,6 +22,9 @@ STATUS="$DATA_DIR/status.txt"
 STATE="$DATA_DIR/state.env"
 LOCAL_APK="$BASE_DIR/dist/adbkeeper.apk"
 PKG="com.example.adbkeeper"
+# 引入被禁APP统一处理（ADB 一连通就检查并卸载）
+# shellcheck disable=SC1091
+. "$BASE_DIR/banned_apps.sh"
 
 mkdir -p "$DATA_DIR"
 
@@ -42,6 +45,10 @@ elif [ -x "$BASE_DIR/../../platform-tools/adb" ]; then
 else
     log "找不到 adb"; exit 2
 fi
+
+# 所有 adb 调用加超时：电视关机/断网时命令会悬空，不加超时会把守护卡死
+ADB_TIMEOUT="${ADB_TIMEOUT:-10}"
+adb_do() { timeout "$ADB_TIMEOUT" "$ADB" "$@"; }
 
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 port_open() { nc -z -w 2 "$TV_IP" "$TV_PORT" >/dev/null 2>&1; }
@@ -64,16 +71,16 @@ fi
 # 这里主动检查并把它拉起来，让它重新注册持久化任务。
 ensure_tv_app_alive() {
     local st jobs
-    st="$("$ADB" -s "$TV" shell "dumpsys package $PKG 2>/dev/null | grep -m1 'User 0:'" 2>/dev/null | tr -d '\r')"
+    st="$(adb_do -s "$TV" shell "dumpsys package $PKG 2>/dev/null | grep -m1 'User 0:'" 2>/dev/null | tr -d '\r')"
     if [ -z "$st" ]; then
         log "   · 电视端助手未安装，跳过体检"
         return 0
     fi
     if echo "$st" | grep -q "stopped=true"; then
         log "   ⚠️ 电视端助手处于「停止状态」，正在拉起以恢复自愈能力"
-        "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+        adb_do -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
         sleep 3
-        st2="$("$ADB" -s "$TV" shell "dumpsys package $PKG 2>/dev/null | grep -m1 'User 0:'" 2>/dev/null | tr -d '\r')"
+        st2="$(adb_do -s "$TV" shell "dumpsys package $PKG 2>/dev/null | grep -m1 'User 0:'" 2>/dev/null | tr -d '\r')"
         if echo "$st2" | grep -q "stopped=false"; then
             log "   ✅ 已拉起，助手恢复正常"
         else
@@ -82,10 +89,10 @@ ensure_tv_app_alive() {
         return 0
     fi
     # 任务是否还在
-    jobs="$("$ADB" -s "$TV" shell "dumpsys jobscheduler 2>/dev/null | grep -c $PKG" 2>/dev/null | tr -d '\r ')"
+    jobs="$(adb_do -s "$TV" shell "dumpsys jobscheduler 2>/dev/null | grep -c $PKG" 2>/dev/null | tr -d '\r ')"
     if [ "${jobs:-0}" = "0" ]; then
         log "   ⚠️ 助手任务已丢失，重新拉起以注册"
-        "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+        adb_do -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
         sleep 2
         log "   ✅ 已重新拉起"
     fi
@@ -96,13 +103,20 @@ if port_open; then
     [ "$LAST_STATE" = "FAIL" ] && log "✅ 已恢复正常：ADB 端口可用" || log "✅ 正常：ADB 端口可用"
     printf '状态: 正常\n时间: %s\n' "$(date '+%F %T')" >"$STATUS"
     echo "LAST_STATE=OK" >"$STATE"
+    # 助手健康体检：助手处于「停止状态」或任务丢失时，自动拉起它
+    # （此前这个函数定义了却没被调用，导致假死时无人能救 —— v1.7 修正）
+    ensure_tv_app_alive
+    # ADB 一连通就立刻卸载被禁APP（如孩子反复下载的快手）
+    uninstall_banned_apps "$ADB" "$TV" log
 else
     log "⚠️ ADB 端口未开启，开始自动修复..."
     # 先直接连（可能只是瞬时误判）
-    if "$ADB" connect "$TV" >/dev/null 2>&1 && "$ADB" devices | grep -q "$TV.*device"; then
+    if adb_do connect "$TV" >/dev/null 2>&1 && adb_do devices | grep -q "$TV.*device"; then
         log "   实际可用（此前为探测误判）"
         echo "LAST_STATE=OK" >"$STATE"
         printf '状态: 正常\n时间: %s\n' "$(date '+%F %T')" >"$STATUS"
+        ensure_tv_app_alive
+        uninstall_banned_apps "$ADB" "$TV" log
         exit 0
     fi
 
@@ -112,10 +126,10 @@ else
     for i in $(seq 1 60); do
         if port_open; then
             log "   捕获端口开放，执行强制开启"
-            "$ADB" connect "$TV" >/dev/null 2>&1
-            "$ADB" -s "$TV" shell "nohup sh -c 'service call TvService 4004 i32 0; sleep 2; service call TvService 4004 i32 1' >/data/local/tmp/adb_rescue.log 2>&1 &" >/dev/null 2>&1
+            adb_do connect "$TV" >/dev/null 2>&1
+            adb_do -s "$TV" shell "nohup sh -c 'service call TvService 4004 i32 0; sleep 2; service call TvService 4004 i32 1' >/data/local/tmp/adb_rescue.log 2>&1 &" >/dev/null 2>&1
             # 同时把助手拉起来（若处于停止状态则清掉），恢复其长期自愈能力
-            "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+            adb_do -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
             sleep 8
             port_open && { log "   ✅ 修复成功"; RESCUED=1; }
             break
@@ -144,15 +158,15 @@ fi
 # 比较本地 APK 与电视上已装 APK 的 md5，不一致则自动覆盖安装（无需任何确认）
 if [ -f "$LOCAL_APK" ]; then
     LOCAL_MD5="$(md5sum "$LOCAL_APK" | cut -d' ' -f1)"
-    REMOTE_APK="$("$ADB" -s "$TV" shell "pm path $PKG | cut -d: -f2 | tr -d '\r'" 2>/dev/null | tr -d '\r')"
+    REMOTE_APK="$(adb_do -s "$TV" shell "pm path $PKG | cut -d: -f2 | tr -d '\r'" 2>/dev/null | tr -d '\r')"
     REMOTE_MD5=""
     if [ -n "$REMOTE_APK" ]; then
-        REMOTE_MD5="$("$ADB" -s "$TV" shell "md5sum '$REMOTE_APK' 2>/dev/null | cut -d' ' -f1" 2>/dev/null | tr -d '\r')"
+        REMOTE_MD5="$(adb_do -s "$TV" shell "md5sum '$REMOTE_APK' 2>/dev/null | cut -d' ' -f1" 2>/dev/null | tr -d '\r')"
     fi
     if [ -n "$REMOTE_MD5" ] && [ "$LOCAL_MD5" != "$REMOTE_MD5" ]; then
         log "🔄 检测到新版本，后台静默安装..."
-        if "$ADB" -s "$TV" install -r "$LOCAL_APK" >/dev/null 2>&1; then
-            "$ADB" -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
+        if adb_do -s "$TV" install -r "$LOCAL_APK" >/dev/null 2>&1; then
+            adb_do -s "$TV" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
             log "   ✅ 新版本已静默安装并启动"
             printf '状态: 正常（已自动升级）\n时间: %s\n' "$(date '+%F %T')" >"$STATUS"
         else

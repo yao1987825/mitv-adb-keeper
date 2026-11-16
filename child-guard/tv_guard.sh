@@ -34,6 +34,11 @@ resolve_adb() {
 
 ADB_BIN="${ADB_BIN:-$(resolve_adb)}"
 
+# 所有 adb 调用都加超时：电视关机/断网时命令会悬空，
+# 不加超时会把守护循环卡死（v1.7 修正）
+ADB_TIMEOUT="${ADB_TIMEOUT:-10}"
+adb_do() { timeout "$ADB_TIMEOUT" "$ADB_BIN" "$@"; }
+
 TV_IP="192.168.6.168"        # 小米电视IP
 ADB_PORT="5555"
 ADB_TARGET="$TV_IP:$ADB_PORT"
@@ -77,18 +82,18 @@ now_sec() { date +%s; }
 
 # 确保ADB已连接
 ensure_adb() {
-  if ! "$ADB_BIN" devices 2>/dev/null | grep -qw "$ADB_TARGET"; then
-    "$ADB_BIN" connect "$ADB_TARGET" >/dev/null 2>&1
+  if ! adb_do devices 2>/dev/null | grep -qw "$ADB_TARGET"; then
+    adb_do connect "$ADB_TARGET" >/dev/null 2>&1
     sleep 1
   fi
-  "$ADB_BIN" -s "$ADB_TARGET" get-state >/dev/null 2>&1 || "$ADB_BIN" connect "$ADB_TARGET" >/dev/null 2>&1
+  adb_do -s "$ADB_TARGET" get-state >/dev/null 2>&1 || adb_do connect "$ADB_TARGET" >/dev/null 2>&1
 }
 
 # 获取当前前台App包名
 get_foreground_package() {
   local line pkg
-  line=$("$ADB_BIN" -s "$ADB_TARGET" shell "dumpsys window windows 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp'" 2>/dev/null | head -n1)
-  [ -z "$line" ] && line=$("$ADB_BIN" -s "$ADB_TARGET" shell "dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity'" 2>/dev/null | head -n1)
+  line=$(adb_do -s "$ADB_TARGET" shell "dumpsys window windows 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp'" 2>/dev/null | head -n1)
+  [ -z "$line" ] && line=$(adb_do -s "$ADB_TARGET" shell "dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity'" 2>/dev/null | head -n1)
   pkg=$(echo "$line" | grep -oE '[A-Za-z0-9_.]+/[A-Za-z0-9_.]+' | head -n1 | cut -d'/' -f1)
   echo "$pkg"
 }
@@ -108,6 +113,10 @@ seconds_until_allow() {
   echo $((target_s - now_s))
 }
 
+# 引入被禁APP统一处理（发现即卸载）
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "$0")/.." && pwd)/banned_apps.sh"
+
 # 判断是否受管控App
 is_watch_app() {
   local pkg="$1" p
@@ -126,7 +135,7 @@ is_watch_app() {
 force_stop_all() {
   local pkg
   for pkg in "${WATCH_PACKAGES[@]}"; do
-    "$ADB_BIN" -s "$ADB_TARGET" shell "am force-stop $pkg" >/dev/null 2>&1
+    adb_do -s "$ADB_TARGET" shell "am force-stop $pkg" >/dev/null 2>&1
   done
 }
 
@@ -137,10 +146,10 @@ REMINDER_PKG="com.example.reminder"
 # 参数1: 剩余休息秒数；-1 表示"今天不能再看了"
 show_reminder() {
   local remain="${1:--1}" night="${2:-0}"
-  "$ADB_BIN" -s "$ADB_TARGET" shell "am start -n $REMINDER_PKG/.MainActivity --ei remain_sec $remain --ei night_mode $night" >/dev/null 2>&1
+  adb_do -s "$ADB_TARGET" shell "am start -n $REMINDER_PKG/.MainActivity --ei remain_sec $remain --ei night_mode $night" >/dev/null 2>&1
 }
 hide_reminder() {
-  "$ADB_BIN" -s "$ADB_TARGET" shell "am force-stop com.example.reminder" >/dev/null 2>&1
+  adb_do -s "$ADB_TARGET" shell "am force-stop com.example.reminder" >/dev/null 2>&1
 }
 
 # 电视桌面(启动器)包名
@@ -164,9 +173,9 @@ block_action() {
   force_stop_all
   sleep 1
   show_reminder "$remain" "$night"
-  "$ADB_BIN" -s "$ADB_TARGET" shell "cmd notification post -t '时间管理提醒' guard '小朋友休息一下，让眼睛放松放松吧~'" >/dev/null 2>&1 || true
+  adb_do -s "$ADB_TARGET" shell "cmd notification post -t '时间管理提醒' guard '小朋友休息一下，让眼睛放松放松吧~'" >/dev/null 2>&1 || true
   if [ "$TURN_OFF_SCREEN" = "1" ]; then
-    "$ADB_BIN" -s "$ADB_TARGET" shell "input keyevent KEYCODE_SLEEP" >/dev/null 2>&1
+    adb_do -s "$ADB_TARGET" shell "input keyevent KEYCODE_SLEEP" >/dev/null 2>&1
   fi
   log "已强制暂停观看"
 }
@@ -248,6 +257,8 @@ main() {
 
   while true; do
     ensure_adb
+    # 孩子反复下载被禁APP -> ADB 一连通就立刻卸载
+    uninstall_banned_apps "$ADB_BIN" "$ADB_TARGET" log
     fg=$(get_foreground_package)
 
     # 跨天则重置
