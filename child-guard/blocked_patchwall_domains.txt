@@ -1,0 +1,24 @@
+# PatchWall 内容接口屏蔽清单（写在路由器 /etc/hosts，映射到 0.0.0.0）
+# 作用：切断小米电视桌面“推荐流 / 短视频 / 短剧 / 音乐 / 体育”等内容源，
+#       即使桌面是标准模式也加载不出这些内容。
+# 添加时间：2026-11-16
+api.ptmi.gitv.tv
+ws-gateway.v.mitvos.com
+bixi.tv.mi.com
+pandora.xiaomi.com
+api.pandora.xiaomi.com
+media.icntv.pre.pandora.xiaomi.com
+pre-bixi.v.mitvos.com
+preview-ws-gateway.v.mitvos.com
+music.ptmi.gitv.tv
+media.ptmi.gitv.tv
+dvb.ptmi.gitv.tv
+dvb.tv.in.duokanbox.com
+upgradeapi.n.duokanbox.com
+newtvtest.bd.ottcn.com
+milog.bd.ottcn.com
+www.chinaott.com
+bili.youth.mitvos.com
+stag-bixi.tv.xiaomi.srv
+v2.pandora.xiaomi.com
+ottimg.cdn.pandora.xiaomi.com
