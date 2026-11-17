@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.adbkeeper"
+    android:versionCode="4"
+    android:versionName="4.0">
+
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 探测本机 5555 端口需要联网权限，否则 socket 连接会被系统拒绝 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="@string/app_name"
+        android:debuggable="true"
+        android:theme="@android:style/Theme.NoDisplay">
+        <!-- 注意：这里刻意不加 MAIN/LAUNCHER intent-filter，
+             这样应用不会出现在桌面/应用列表里，小孩看不到也就不会误删。
+             仍可用 adb shell am start -n com.example.adbkeeper/.MainActivity 启动。 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".AdbJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true" />
+    </application>
+</manifest>
