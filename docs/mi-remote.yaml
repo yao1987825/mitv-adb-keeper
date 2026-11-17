@@ -1,0 +1,61 @@
+# ============================================================================
+#  小米电视 BLE 遥控器 —— ESPHome 配置（可直接用，改前 3 处 substitutions 即可）
+#  配套文档: docs/ble-remote-guide.md
+#  编译: docker exec -it esphome esphome compile mi-remote.yaml
+#  烧录: docker exec -it esphome esphome run mi-remote.yaml --device /dev/ttyUSB0
+# ============================================================================
+substitutions:
+  device_name: mi-remote
+  wifi_ssid: "你的WiFi"
+  wifi_password: "你的WiFi密码"
+  ota_password: "自己设一个"
+
+external_components:
+  - source: github://shammysha/esphome-ble-mi-remote
+  # 想改本地代码时改用下面这段：
+  # - source:
+  #     type: local
+  #     path: /work/esphome-ble-mi-remote
+
+esphome:
+  name: ${device_name}
+  friendly_name: "MI TV 遥控器"
+  platformio_options:
+    # ESP32-C3 必须是 dio，用 qio 会开不了机
+    board_build.flash_mode: dio
+  on_boot:
+    priority: -100
+    then:
+      - ble_mi_remote.start: mi_remote
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    # ★ 必需：上游用 arduino，本组件必须 esp-idf，否则编译不过
+    type: esp-idf
+
+logger:
+  level: DEBUG        # 调试期用 DEBUG，稳定后改成 INFO
+
+api:
+ota:
+  - platform: esphome
+    password: ${ota_password}
+
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_password}
+  ap:
+    ssid: "mi-remote-备用"
+    password: "12345678"
+
+web_server:
+  port: 80
+
+ble_mi_remote:
+  id: mi_remote
+  name: "MI Remote"
+  manufacturer_id: "Shammysha"
+  battery_level: 100
+  reconnect: true
